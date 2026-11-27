@@ -1,5 +1,7 @@
 # agy-codex — Antigravity 指挥 Codex 工作调度系统
 
+你的CODEX还在不愿意干活吗？快试试看这个吧！
+
 本仓库提供了一套零外部依赖的 **Node.js 调度程序 + Antigravity 技能/规范**，用于让 Antigravity 作为“指挥官（Commander）”向本机 Windows 上的 OpenAI Codex CLI 下达结构化任务指令、自动识别并打回 **Codex 的回避型回复**、自动验收 `git diff` 与测试命令、支持会话续跑（`resume`）以及基于 `git worktree` 的多任务并行派发。
 
 ---
