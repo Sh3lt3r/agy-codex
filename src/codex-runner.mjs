@@ -52,6 +52,67 @@ function quoteForCmd(arg) {
   return `"${arg.replace(/"/g, '\\"')}"`;
 }
 
+function truncateLine(text, maxLen = 110) {
+  const clean = String(text || '').replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxLen) return clean;
+  return clean.slice(0, maxLen - 3) + '...';
+}
+
+/**
+ * Turn a Codex `--json` event object into a concise 1-line progress summary,
+ * or null if the event is noisy/internal.
+ */
+export function formatCodexEventSummary(obj) {
+  if (!obj || typeof obj !== 'object') return null;
+
+  if (obj.type === 'thread.started' && obj.thread_id) {
+    return `session=${obj.thread_id}`;
+  }
+
+  if (obj.type === 'turn.failed') {
+    const msg = obj.error?.message || obj.message || 'unknown error';
+    return `turn failed: ${truncateLine(msg, 120)}`;
+  }
+
+  if (obj.type === 'error' && obj.message) {
+    return `error: ${truncateLine(obj.message, 120)}`;
+  }
+
+  const item = obj.item;
+  if (!item || typeof item !== 'object') return null;
+
+  if (obj.type === 'item.started') {
+    if (item.type === 'command_execution' && item.command) {
+      return `cmd start: ${truncateLine(item.command, 110)}`;
+    }
+    if (item.type === 'mcp_tool_call') {
+      const name = item.tool || item.name || 'mcp';
+      return `tool start: ${truncateLine(name, 80)}`;
+    }
+    return null;
+  }
+
+  if (obj.type === 'item.completed') {
+    if (item.type === 'command_execution') {
+      const code = item.exit_code ?? item.exitCode;
+      const cmd = truncateLine(item.command || '', 80);
+      return `cmd done (exit=${code ?? '?'}): ${cmd}`;
+    }
+    if (item.type === 'file_change') {
+      const count = Array.isArray(item.changes) ? item.changes.length : 1;
+      return `file change (${count} file${count === 1 ? '' : 's'})`;
+    }
+    if (item.type === 'agent_message' && item.text) {
+      return `message: ${truncateLine(item.text, 100)}`;
+    }
+    if (item.type === 'error' && item.message) {
+      return `item error: ${truncateLine(item.message, 110)}`;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Built-in mock executor for offline testing and demos.
  */
@@ -154,6 +215,7 @@ export async function runCodex({
   attemptNumber = 1,
   task = null,
   onOutput = null,
+  onProgress = null,
 }) {
   if (mock) {
     return runMockCodex({
@@ -239,7 +301,14 @@ export async function runCodex({
   return new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
+    let stdoutLineBuf = '';
     let timedOut = false;
+    let eventsStream = null;
+
+    if (eventsPath) {
+      fs.mkdirSync(path.dirname(eventsPath), { recursive: true });
+      eventsStream = fs.createWriteStream(eventsPath, { encoding: 'utf8', flags: 'w' });
+    }
 
     const child = spawn(spawnCmd, spawnArgs, {
       cwd,
@@ -257,9 +326,29 @@ export async function runCodex({
       }
     }, timeoutMs);
 
+    const processJsonLines = (chunkText) => {
+      stdoutLineBuf += chunkText;
+      const lines = stdoutLineBuf.split(/\r?\n/);
+      stdoutLineBuf = lines.pop() ?? '';
+      if (!onProgress) return;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith('{')) continue;
+        try {
+          const obj = JSON.parse(trimmed);
+          const summary = formatCodexEventSummary(obj);
+          if (summary) onProgress({ summary, event: obj });
+        } catch {
+          // ignore non-JSON lines
+        }
+      }
+    };
+
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString('utf8');
       stdout += text;
+      if (eventsStream) eventsStream.write(text);
+      processJsonLines(text);
       if (onOutput) onOutput('stdout', text);
     });
 
@@ -276,13 +365,19 @@ export async function runCodex({
       child.stdin.end();
     }
 
-    child.on('close', (code) => {
-      clearTimeout(timer);
-      const durationMs = Date.now() - startTime;
+    const finishStream = () =>
+      new Promise((done) => {
+        if (!eventsStream) return done();
+        eventsStream.end(() => done());
+      });
 
-      if (eventsPath) {
-        fs.writeFileSync(eventsPath, stdout, 'utf8');
+    child.on('close', async (code) => {
+      clearTimeout(timer);
+      if (stdoutLineBuf.trim()) {
+        processJsonLines('\n');
       }
+      await finishStream();
+      const durationMs = Date.now() - startTime;
 
       let lastMessage = '';
       if (outputLastMessagePath && fs.existsSync(outputLastMessagePath)) {

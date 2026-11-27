@@ -5,6 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { DEFAULT_CONFIG, listAvailableModels } from '../src/config.mjs';
+import { formatCodexEventSummary } from '../src/codex-runner.mjs';
 import { dispatchTask, resumeRun } from '../src/orchestrator.mjs';
 import { runTaskQueue } from '../src/queue.mjs';
 import { cleanupWorktree } from '../src/worktree.mjs';
@@ -237,4 +238,33 @@ test('supports explicit model selection and reads local model cache', async () =
     fs.rmSync(tmpDir, { recursive: true, force: true });
     fs.rmSync(fakeCodexHome, { recursive: true, force: true });
   }
+});
+
+test('formats concise single-line Codex progress summaries without raw dumps', () => {
+  assert.equal(
+    formatCodexEventSummary({ type: 'thread.started', thread_id: 'abc-123' }),
+    'session=abc-123'
+  );
+  assert.equal(
+    formatCodexEventSummary({
+      type: 'item.started',
+      item: { type: 'command_execution', command: 'npm test' },
+    }),
+    'cmd start: npm test'
+  );
+  assert.equal(
+    formatCodexEventSummary({
+      type: 'item.completed',
+      item: { type: 'command_execution', command: 'npm test', exit_code: 0 },
+    }),
+    'cmd done (exit=0): npm test'
+  );
+  assert.equal(
+    formatCodexEventSummary({
+      type: 'item.completed',
+      item: { type: 'file_change', changes: [{ path: 'a.js' }, { path: 'b.js' }] },
+    }),
+    'file change (2 files)'
+  );
+  assert.equal(formatCodexEventSummary({ type: 'turn.started' }), null);
 });

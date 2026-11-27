@@ -208,6 +208,9 @@ async function cmdDispatch(flags, config) {
       if (flags.json) return;
       if (ev.type === 'attempt_start') {
         console.log(`[${ev.runId}] Attempt ${ev.attemptNumber} (${ev.mode}) started...`);
+      } else if (ev.type === 'codex_progress') {
+        const ts = new Date().toTimeString().slice(0, 8);
+        console.log(`[${ev.runId}] [${ts}] ${ev.summary}`);
       } else if (ev.type === 'attempt_done') {
         console.log(
           `[${ev.runId}] Attempt ${ev.attemptNumber} done | evasion=${ev.evasionSeverity} | verifyPassed=${ev.verifyPassed} | changedFiles=${ev.changedFiles}`
@@ -248,6 +251,19 @@ async function cmdResume(flags, config) {
     bypassSandbox: Boolean(flags['bypass-sandbox']),
     mock: Boolean(flags.mock),
     mockScenario: typeof flags['mock-scenario'] === 'string' ? flags['mock-scenario'] : 'clean',
+    onEvent: (ev) => {
+      if (flags.json) return;
+      if (ev.type === 'attempt_start') {
+        console.log(`[${ev.runId}] Attempt ${ev.attemptNumber} (${ev.mode}) started...`);
+      } else if (ev.type === 'codex_progress') {
+        const ts = new Date().toTimeString().slice(0, 8);
+        console.log(`[${ev.runId}] [${ts}] ${ev.summary}`);
+      } else if (ev.type === 'attempt_done') {
+        console.log(
+          `[${ev.runId}] Attempt ${ev.attemptNumber} done | evasion=${ev.evasionSeverity} | verifyPassed=${ev.verifyPassed} | changedFiles=${ev.changedFiles}`
+        );
+      }
+    },
   });
 
   if (flags.json) {

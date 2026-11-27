@@ -190,6 +190,16 @@ async function executeAttemptLoop({
       mockScenario,
       attemptNumber,
       task: summary.task,
+      onProgress: onEvent
+        ? ({ summary: progressSummary }) => {
+            onEvent({
+              type: 'codex_progress',
+              runId: summary.runId,
+              attemptNumber,
+              summary: progressSummary,
+            });
+          }
+        : null,
     });
 
     if (codexResult.sessionId) {
