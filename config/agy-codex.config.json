@@ -7,7 +7,7 @@
     "fullAuto": false,
     "extraArgs": [],
     "promptDelivery": "stdin",
-    "timeoutMs": 600000
+    "timeoutMs": 1200000
   },
   "orchestrator": {
     "maxAttempts": 3,
