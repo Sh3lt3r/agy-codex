@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import readline from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
-import { loadConfig, resolveCodexBinary } from '../src/config.mjs';
+import { listAvailableModels, loadConfig, resolveCodexBinary } from '../src/config.mjs';
 import { dispatchTask, resumeRun } from '../src/orchestrator.mjs';
 import { runTaskQueue } from '../src/queue.mjs';
 import { getRunsRoot, listRuns, loadRunSummary } from '../src/store.mjs';
@@ -43,11 +44,12 @@ function printHelp() {
 
 Usage:
   agy-codex doctor [--config <path>]
+  agy-codex models [--all] [--json]
   agy-codex init-task --out <file> [--id <id>] [--title <title>]
-  agy-codex dispatch --task <task.json> [--worktree] [--mock] [--mock-scenario <name>]
-  agy-codex dispatch --title <t> --objective <o> [--cwd <dir>] [--verify <cmd>] [--target <file>] [--worktree] [--mock]
-  agy-codex resume --run <run-id> [--note <directive>] [--attempts <n>] [--mock]
-  agy-codex queue --file <queue.json> [--concurrency <n>] [--worktree] [--mock]
+  agy-codex dispatch --task <task.json> [--model <slug>] [--select-model] [--worktree] [--bypass-sandbox] [--session <id>] [--mock] [--mock-scenario <name>]
+  agy-codex dispatch --title <t> --objective <o> [--cwd <dir>] [--model <slug>] [--select-model] [--verify <cmd>] [--target <file>] [--worktree] [--bypass-sandbox] [--session <id>] [--mock]
+  agy-codex resume --run <run-id> [--note <directive>] [--model <slug>] [--select-model] [--attempts <n>] [--bypass-sandbox] [--mock]
+  agy-codex queue --file <queue.json> [--model <slug>] [--concurrency <n>] [--worktree] [--mock]
   agy-codex review --run <run-id> [--json]
   agy-codex status [--json]
   agy-codex cleanup-worktree --run <run-id> [--delete-branch]
@@ -88,6 +90,58 @@ function cmdDoctor(config, configPath) {
       '\n[Hint] Codex CLI not detected. Install via `npm install -g @openai/codex` or set CODEX_BIN / config.codex.bin.'
     );
     console.error('       You can still test the full orchestration & anti-evasion pipeline with `--mock`.');
+  }
+}
+
+function cmdModels(flags, config) {
+  const info = listAvailableModels({ includeHidden: Boolean(flags.all) });
+  const effectiveDefault = config.codex?.model || info.defaultModel || '';
+  if (flags.json) {
+    console.log(JSON.stringify({ ...info, effectiveDefault }, null, 2));
+    return;
+  }
+  console.log(`Default model: ${effectiveDefault || '(codex CLI default)'}`);
+  if (info.models.length === 0) {
+    console.log('No cached Codex models found. Pass --model <slug> manually if needed.');
+    return;
+  }
+  console.log('\nAvailable Codex models:');
+  info.models.forEach((m, idx) => {
+    const marker = m.slug === effectiveDefault ? ' (default)' : '';
+    console.log(`  ${idx + 1}. ${m.slug} — ${m.displayName}${marker}`);
+  });
+}
+
+async function maybeSelectModelInteractively({ explicitModel, selectFlag, config }) {
+  if (explicitModel) return explicitModel;
+  const shouldPrompt = Boolean(selectFlag || config.codex?.promptModelSelection);
+  if (!shouldPrompt || !process.stdin.isTTY || !process.stdout.isTTY) {
+    return '';
+  }
+
+  const info = listAvailableModels();
+  if (info.models.length === 0) return '';
+
+  const effectiveDefault = config.codex?.model || info.defaultModel || '';
+  console.log('\nSelect Codex model for this conversation:');
+  info.models.forEach((m, idx) => {
+    const marker = m.slug === effectiveDefault ? ' [default]' : '';
+    console.log(`  ${idx + 1}. ${m.slug} (${m.displayName})${marker}`);
+  });
+
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = (
+      await rl.question(`Enter number or model slug [Enter for ${effectiveDefault || 'default'}]: `)
+    ).trim();
+    if (!answer) return effectiveDefault;
+    const asNum = Number(answer);
+    if (Number.isInteger(asNum) && asNum >= 1 && asNum <= info.models.length) {
+      return info.models[asNum - 1].slug;
+    }
+    return answer;
+  } finally {
+    rl.close();
   }
 }
 
@@ -134,11 +188,20 @@ async function cmdDispatch(flags, config) {
     throw new Error('Provide either --task <file.json> or --objective "<text>".');
   }
 
+  const selectedModel = await maybeSelectModelInteractively({
+    explicitModel: typeof flags.model === 'string' ? flags.model : task.model || '',
+    selectFlag: Boolean(flags['select-model']),
+    config,
+  });
+
   const res = await dispatchTask({
     task,
     config,
     baseDir: process.cwd(),
     useWorktree: Boolean(flags.worktree),
+    model: selectedModel,
+    bypassSandbox: Boolean(flags['bypass-sandbox']),
+    sessionId: typeof flags.session === 'string' ? flags.session : null,
     mock: Boolean(flags.mock),
     mockScenario: typeof flags['mock-scenario'] === 'string' ? flags['mock-scenario'] : 'clean',
     onEvent: (ev) => {
@@ -170,12 +233,19 @@ async function cmdDispatch(flags, config) {
 
 async function cmdResume(flags, config) {
   if (!flags.run) throw new Error('Missing --run <run-id>.');
+  const selectedModel = await maybeSelectModelInteractively({
+    explicitModel: typeof flags.model === 'string' ? flags.model : '',
+    selectFlag: Boolean(flags['select-model']),
+    config,
+  });
   const res = await resumeRun({
     runId: flags.run,
     note: typeof flags.note === 'string' ? flags.note : '',
     config,
     baseDir: process.cwd(),
     maxAdditionalAttempts: flags.attempts ? Number(flags.attempts) : 1,
+    model: selectedModel,
+    bypassSandbox: Boolean(flags['bypass-sandbox']),
     mock: Boolean(flags.mock),
     mockScenario: typeof flags['mock-scenario'] === 'string' ? flags['mock-scenario'] : 'clean',
   });
@@ -194,7 +264,9 @@ async function cmdResume(flags, config) {
 async function cmdQueue(flags, config) {
   if (!flags.file) throw new Error('Missing --file <queue.json>.');
   const raw = JSON.parse(fs.readFileSync(path.resolve(flags.file), 'utf8'));
-  const tasks = Array.isArray(raw) ? raw : raw.tasks;
+  const tasks = (Array.isArray(raw) ? raw : raw.tasks).map((t) =>
+    typeof flags.model === 'string' && !t.model ? { ...t, model: flags.model } : t
+  );
 
   const out = await runTaskQueue({
     tasks,
@@ -285,6 +357,9 @@ async function main() {
   switch (command) {
     case 'doctor':
       cmdDoctor(config, configPath);
+      break;
+    case 'models':
+      cmdModels(flags, config);
       break;
     case 'init-task':
       cmdInitTask(flags);

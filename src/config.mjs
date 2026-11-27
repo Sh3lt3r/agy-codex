@@ -12,8 +12,11 @@ export const DEFAULT_CONFIG = {
   codex: {
     bin: 'auto',
     model: '',
+    promptModelSelection: false,
     sandbox: 'workspace-write',
     approvalPolicy: 'never',
+    bypassSandbox: false,
+    skipGitRepoCheck: false,
     fullAuto: false,
     extraArgs: [],
     promptDelivery: 'stdin',
@@ -100,20 +103,42 @@ export function resolveCodexBinary(configuredBin = 'auto') {
     };
   }
 
+  const home = os.homedir();
+  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
+  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
+
+  // Prefer the newest Codex Desktop bundled CLI under %LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\codex.exe
+  // because ~/.codex/config.toml often pins models that require the Desktop runtime's CLI version.
+  const desktopBinRoot = path.join(localAppData, 'OpenAI', 'Codex', 'bin');
+  if (fs.existsSync(desktopBinRoot)) {
+    try {
+      const subdirs = fs
+        .readdirSync(desktopBinRoot, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => path.join(desktopBinRoot, e.name, 'codex.exe'))
+        .filter((p) => fs.existsSync(p))
+        .map((p) => ({ p, mtime: fs.statSync(p).mtimeMs }))
+        .sort((a, b) => b.mtime - a.mtime);
+      if (subdirs.length > 0) {
+        return { found: true, path: subdirs[0].p, source: 'auto-detected:codex-desktop' };
+      }
+    } catch {
+      // ignore and continue probing
+    }
+  }
+
   const onPath = probeCommandOnPath('codex');
   if (onPath) {
     return { found: true, path: onPath, source: 'PATH' };
   }
 
-  const home = os.homedir();
-  const appData = process.env.APPDATA || path.join(home, 'AppData', 'Roaming');
-  const localAppData = process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local');
   const npmPrefix = probeNpmPrefix();
 
   const candidates = [
     npmPrefix && path.join(npmPrefix, 'codex.cmd'),
     npmPrefix && path.join(npmPrefix, 'codex.exe'),
     npmPrefix && path.join(npmPrefix, 'codex'),
+    path.join(localAppData, 'Programs', 'OpenAI', 'Codex', 'bin', 'codex.exe'),
     path.join(appData, 'npm', 'codex.cmd'),
     path.join(appData, 'npm', 'codex.exe'),
     path.join(localAppData, 'pnpm', 'codex.cmd'),
@@ -176,4 +201,63 @@ function probeNpmPrefix() {
     if (val && val !== 'undefined') return val;
   }
   return null;
+}
+
+/**
+ * Discover available Codex models from local Codex cache (~/.codex/models_cache*.json)
+ * and the default model configured in ~/.codex/config.toml.
+ */
+export function listAvailableModels({ includeHidden = false, codexHome = null } = {}) {
+  const homeDir = codexHome || process.env.CODEX_HOME || path.join(os.homedir(), '.codex');
+  let defaultModel = '';
+
+  const tomlPath = path.join(homeDir, 'config.toml');
+  if (fs.existsSync(tomlPath)) {
+    try {
+      const tomlText = fs.readFileSync(tomlPath, 'utf8');
+      const match = tomlText.match(/^\s*model\s*=\s*["']([^"']+)["']/m);
+      if (match) defaultModel = match[1].trim();
+    } catch {
+      // ignore unreadable config.toml
+    }
+  }
+
+  const cacheCandidates = [
+    path.join(homeDir, 'models_cache.codex_work_desktop.json'),
+    path.join(homeDir, 'models_cache.json'),
+  ];
+
+  let source = null;
+  let rawModels = [];
+  for (const candidate of cacheCandidates) {
+    if (!fs.existsSync(candidate)) continue;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(candidate, 'utf8'));
+      const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed.models) ? parsed.models : [];
+      if (list.length > 0) {
+        rawModels = list;
+        source = candidate;
+        break;
+      }
+    } catch {
+      // ignore malformed cache
+    }
+  }
+
+  const models = rawModels
+    .filter((m) => m && typeof m.slug === 'string')
+    .filter((m) => includeHidden || m.visibility !== 'hide')
+    .map((m) => ({
+      slug: m.slug,
+      displayName: m.display_name || m.slug,
+      description: m.description || '',
+      visibility: m.visibility || 'list',
+      defaultReasoningLevel: m.default_reasoning_level || '',
+    }));
+
+  return {
+    defaultModel,
+    models,
+    source,
+  };
 }

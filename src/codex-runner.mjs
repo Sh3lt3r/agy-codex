@@ -190,11 +190,17 @@ export async function runCodex({
     args.push('-C', cwd);
   }
 
-  if (codexCfg.model) {
-    args.push('-m', codexCfg.model);
+  const selectedModel = task?.model || codexCfg.model;
+  if (selectedModel) {
+    args.push('-m', selectedModel);
   }
 
-  if (codexCfg.fullAuto) {
+  const bypassSandbox = Boolean(task?.bypassSandbox || codexCfg.bypassSandbox);
+  const skipGitRepoCheck = Boolean(task?.skipGitRepoCheck || codexCfg.skipGitRepoCheck);
+
+  if (bypassSandbox) {
+    args.push('--dangerously-bypass-approvals-and-sandbox');
+  } else if (codexCfg.fullAuto) {
     args.push('--full-auto');
   } else {
     if (codexCfg.sandbox && !sessionId) {
@@ -203,6 +209,10 @@ export async function runCodex({
     if (codexCfg.approvalPolicy && !sessionId) {
       args.push('-c', `approval_policy="${codexCfg.approvalPolicy}"`);
     }
+  }
+
+  if (skipGitRepoCheck) {
+    args.push('--skip-git-repo-check');
   }
 
   if (Array.isArray(codexCfg.extraArgs) && codexCfg.extraArgs.length > 0) {

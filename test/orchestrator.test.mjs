@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { DEFAULT_CONFIG } from '../src/config.mjs';
+import { DEFAULT_CONFIG, listAvailableModels } from '../src/config.mjs';
 import { dispatchTask, resumeRun } from '../src/orchestrator.mjs';
 import { runTaskQueue } from '../src/queue.mjs';
 import { cleanupWorktree } from '../src/worktree.mjs';
@@ -162,5 +162,79 @@ test('runs parallel queue with git worktree isolation', async () => {
     }
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('supports attaching an external sessionId and bypassSandbox option on dispatch', async () => {
+  const tmpDir = createTempRepo();
+  try {
+    const res = await dispatchTask({
+      task: {
+        id: 'attach-ext',
+        title: 'Attach external session',
+        cwd: tmpDir,
+        objective: 'Inspect workspace only',
+        expectChanges: false,
+      },
+      config: DEFAULT_CONFIG,
+      baseDir: tmpDir,
+      bypassSandbox: true,
+      sessionId: 'ext-session-1234',
+      mock: true,
+      mockScenario: 'clean',
+    });
+
+    assert.equal(res.summary.status, 'passed');
+    assert.equal(res.summary.sessionId, 'ext-session-1234');
+    assert.equal(res.summary.task.bypassSandbox, true);
+    assert.equal(res.summary.attempts[0].mode, 'resume');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('supports explicit model selection and reads local model cache', async () => {
+  const tmpDir = createTempRepo();
+  const fakeCodexHome = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-codex-home-'));
+  try {
+    fs.writeFileSync(path.join(fakeCodexHome, 'config.toml'), 'model = "gpt-6.2-sol"\n', 'utf8');
+    fs.writeFileSync(
+      path.join(fakeCodexHome, 'models_cache.json'),
+      JSON.stringify({
+        models: [
+          { slug: 'gpt-6.2-sol', display_name: 'GPT-6.2-Sol', visibility: 'list' },
+          { slug: 'gpt-hidden', display_name: 'Hidden', visibility: 'hide' },
+        ],
+      }),
+      'utf8'
+    );
+
+    const listed = listAvailableModels({ codexHome: fakeCodexHome });
+    assert.equal(listed.defaultModel, 'gpt-6.2-sol');
+    assert.deepEqual(
+      listed.models.map((m) => m.slug),
+      ['gpt-6.2-sol']
+    );
+
+    const res = await dispatchTask({
+      task: {
+        id: 'model-override',
+        title: 'Run with chosen model',
+        cwd: tmpDir,
+        objective: 'Inspect workspace',
+        expectChanges: false,
+      },
+      config: DEFAULT_CONFIG,
+      baseDir: tmpDir,
+      model: 'gpt-6.2-sol',
+      mock: true,
+      mockScenario: 'clean',
+    });
+
+    assert.equal(res.summary.status, 'passed');
+    assert.equal(res.summary.task.model, 'gpt-6.2-sol');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    fs.rmSync(fakeCodexHome, { recursive: true, force: true });
   }
 });

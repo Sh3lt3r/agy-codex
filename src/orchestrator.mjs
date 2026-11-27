@@ -31,6 +31,10 @@ export function normalizeTask(rawTask, fallbackCwd) {
     maxAttempts: rawTask.maxAttempts || null,
     useWorktree: Boolean(rawTask.useWorktree),
     baseRef: rawTask.baseRef || 'HEAD',
+    model: rawTask.model || '',
+    bypassSandbox: Boolean(rawTask.bypassSandbox),
+    skipGitRepoCheck: Boolean(rawTask.skipGitRepoCheck),
+    sessionId: rawTask.sessionId || null,
     mockTouchFile: rawTask.mockTouchFile || null,
   };
 }
@@ -42,9 +46,15 @@ export async function dispatchTask({
   mock = false,
   mockScenario = 'clean',
   useWorktree = false,
+  model = '',
+  bypassSandbox = false,
+  sessionId = null,
   onEvent = null,
 }) {
   const task = normalizeTask(rawTask, baseDir);
+  if (model) task.model = model;
+  if (bypassSandbox) task.bypassSandbox = true;
+  if (sessionId) task.sessionId = sessionId;
   const runsRoot = getRunsRoot(baseDir, config);
   const runId = generateRunId(task.id);
   const runDir = createRunDir(runsRoot, runId);
@@ -71,7 +81,7 @@ export async function dispatchTask({
     runId,
     task,
     status: 'running',
-    sessionId: null,
+    sessionId: task.sessionId || null,
     executionCwd,
     worktree: worktreeInfo,
     maxAttempts,
@@ -101,12 +111,16 @@ export async function resumeRun({
   config,
   baseDir = process.cwd(),
   maxAdditionalAttempts = 1,
+  model = '',
+  bypassSandbox = false,
   mock = false,
   mockScenario = 'clean',
   onEvent = null,
 }) {
   const runsRoot = getRunsRoot(baseDir, config);
   const { runDir, summary } = loadRunSummary(runsRoot, runId);
+  if (model) summary.task.model = model;
+  if (bypassSandbox) summary.task.bypassSandbox = true;
   const lastAttempt = summary.attempts[summary.attempts.length - 1];
   const nextAttempt = summary.attempts.length + 1;
   summary.maxAttempts = Math.max(summary.maxAttempts, summary.attempts.length + maxAdditionalAttempts);

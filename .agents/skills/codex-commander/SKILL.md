@@ -12,12 +12,15 @@ description: >-
 
 When acting as Commander directing Codex via `agy-codex`:
 
-## 1. Environment Check
-Before the first real dispatch in a session, verify the Codex binary is reachable:
+## 1. Environment Check & Pre-Dispatch Model Selection
+Before the first real dispatch in a session, verify the Codex binary is reachable and check available models:
 ```powershell
 node bin/agy-codex.mjs doctor
+node bin/agy-codex.mjs models
 ```
-- Note: On Windows, `codex` may be installed globally outside the sandbox PATH or require network access to OpenAI APIs. If `codex exec` fails inside the sandbox due to network/auth or binary path, run only the dispatch/resume command with `BypassSandbox: true` (or set `CODEX_BIN`).
+- **Model Selection Before Starting a Conversation**: Before dispatching a new Codex conversation (`dispatch`), if the user has not already specified a model, list the available models from `node bin/agy-codex.mjs models` and ask the user to choose a model (putting the current default first as `(Recommended)`), then pass `--model <slug>` to `dispatch`.
+- **Sandbox Bypass**: When a task requires network access (e.g., NAS SSH) or cross-workspace operations, pass `--bypass-sandbox` (or set `"bypassSandbox": true` in the task JSON) so Codex receives `--dangerously-bypass-approvals-and-sandbox`.
+- **External Session Attach**: To continue an existing local Codex CLI session (`~/.codex/sessions`), pass `--session <session-id>` to `dispatch`. Note: ChatGPT-hosted cloud threads in Codex Desktop (`source_kind: "chatgpt"`) have no local rollout and cannot be resumed via `codex exec resume`; start a new local Codex CLI session in the target repository instead.
 
 ## 2. Authoring Airtight Task Specs
 Never send vague one-liners to Codex—vague prompts invite clarifying questions and plan-only replies.
