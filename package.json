@@ -1,0 +1,42 @@
+{
+  "name": "agy-codex",
+  "version": "1.0.0",
+  "description": "Antigravity-to-Codex command & orchestration harness with anti-evasion enforcement, verification loops, session resume, and worktree parallel queues.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "antigravity",
+    "codex",
+    "openai-codex",
+    "orchestrator",
+    "agent",
+    "anti-evasion",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<YOUR_GITHUB_USERNAME>/agy-codex.git"
+  },
+  "bin": {
+    "agy-codex": "./bin/agy-codex.mjs"
+  },
+  "files": [
+    ".agents/",
+    "AGENTS.md",
+    "LICENSE",
+    "README.md",
+    "bin/",
+    "config/",
+    "src/",
+    "templates/"
+  ],
+  "scripts": {
+    "doctor": "node ./bin/agy-codex.mjs doctor",
+    "test": "node --test test/*.test.mjs",
+    "demo": "node ./bin/agy-codex.mjs dispatch --task ./templates/task.single.json --mock --mock-scenario evasive-then-fixed",
+    "pack:pkg": "npm pack"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

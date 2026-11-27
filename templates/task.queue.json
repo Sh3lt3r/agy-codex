@@ -1,0 +1,40 @@
+{
+  "concurrency": 2,
+  "useWorktree": true,
+  "tasks": [
+    {
+      "id": "worker-a",
+      "title": "Implement module A",
+      "cwd": ".",
+      "objective": "Implement module A according to specification and verify.",
+      "targetFiles": [
+        "src/module-a.mjs"
+      ],
+      "constraints": [
+        "Keep changes scoped to src/module-a.mjs"
+      ],
+      "acceptanceCriteria": [
+        "src/module-a.mjs implemented and verified"
+      ],
+      "verifyCommands": [],
+      "expectChanges": true
+    },
+    {
+      "id": "worker-b",
+      "title": "Implement module B",
+      "cwd": ".",
+      "objective": "Implement module B according to specification and verify.",
+      "targetFiles": [
+        "src/module-b.mjs"
+      ],
+      "constraints": [
+        "Keep changes scoped to src/module-b.mjs"
+      ],
+      "acceptanceCriteria": [
+        "src/module-b.mjs implemented and verified"
+      ],
+      "verifyCommands": [],
+      "expectChanges": true
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "demo-feature-001",
+  "title": "Add greeting helper and verify output",
+  "cwd": ".",
+  "objective": "Create a small greeting helper module in the target workspace and verify it executes cleanly.",
+  "targetFiles": [
+    "tmp-demo/greet.mjs"
+  ],
+  "constraints": [
+    "Use ESM syntax",
+    "Do not leave TODO placeholders"
+  ],
+  "acceptanceCriteria": [
+    "File tmp-demo/greet.mjs exists and exports ok = true"
+  ],
+  "verifyCommands": [],
+  "expectChanges": true,
+  "useWorktree": false,
+  "maxAttempts": 3
+}

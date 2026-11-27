@@ -1,0 +1,27 @@
+{
+  "codex": {
+    "bin": "auto",
+    "model": "",
+    "sandbox": "workspace-write",
+    "approvalPolicy": "never",
+    "fullAuto": false,
+    "extraArgs": [],
+    "promptDelivery": "stdin",
+    "timeoutMs": 600000
+  },
+  "orchestrator": {
+    "maxAttempts": 3,
+    "autoResumeOnEvasion": true,
+    "autoResumeOnVerifyFail": true,
+    "strictAntiEvasion": true,
+    "runsDir": "runs",
+    "worktreesDir": ".worktrees",
+    "defaultConcurrency": 2
+  },
+  "antiEvasion": {
+    "blockingScoreThreshold": 35,
+    "warningScoreThreshold": 15,
+    "requireReceipt": true,
+    "checkDiffPlaceholders": true
+  }
+}
